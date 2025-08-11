@@ -1,67 +1,172 @@
-# mega.py
+# mega_size.py
 
-Overview:
-This Python script retrieves the total size and structure of public MEGA file or folder links using the MEGA API. It supports decryption of names (if the link key is provided and pycryptodome is installed) and outputs a formatted summary, including a tree view for folders.
+Inspect sizes and structure of **public MEGA** links (folders or files) from the command line.  
+Print a readable tree, export to JSON/CSV, and estimate download times — all without requiring a MEGA account.
 
-Features:
-Calculates total size in bytes and human-readable format (e.g., KB, MB, GB).
-Displays folder structure as a tree with names, types, sizes, and timestamps (if available).
-Handles file links with name and size output.
-Graceful fallback for missing decryption libraries or invalid keys (shows encrypted handles).
-Maps MEGA API error codes to readable messages.
-Command-line flags: --verbose for detailed logs, --summary to skip the tree for large folders, --export json to save structure as JSON.
+> ✅ Works with both old (`#!`, `#F!`) and new (`/file/…#…`, `/folder/…#…`) public link formats.
 
-Requirements:
-Python 3.6 or higher.
-Required: requests (pip install requests).
-Optional (for decryption): pycryptodome (pip install pycryptodome).
-For testing: pytest and requests-mock (pip install pytest requests-mock).
+---
 
-Installation:
-Clone the repository:
-git clone https://github.com/yourusername/mega-py.git
-cd mega-py
+## Features
 
-Install dependencies:
-pip install -r requirements.txt
+- **Total size** for public folders or single files (repeated again at the bottom for long outputs).
+- **Name decryption** when the URL contains a key and `pycryptodome` is installed; otherwise shows handles as “(encrypted)”.
+- **Filters** you can combine:
+  - `--ext .mp4,.mkv`
+  - `--min-size 500MB`
+  - `--since 2024-01-01`
+  - `--until 2025-08-01`
+- **Breakdown by file type** (video/audio/image/archive/docs/other) with counts, total sizes, and % of total.
+- **Sorting** of the printed tree and flat list: `--sort size|name|date` + `--desc`.
+- **Only-folders view**: `-of` (alias: `-OF`, `--only-folders`) prints **folders only**.
+- **Output modes**:
+  - `--bytes-only` → just the total number (for piping).
+  - `--flat` → one line per file: `<size_bytes>\t<path>`.
+  - `--export json,csv` → JSON tree and/or CSV file list:
+    - CSV columns: `path, type, size_bytes, size_human, ts_iso, handle`.
+- **Download-time estimate**: `--mbps 100` prints ETA for the total (or filtered total) **and per top-level folder**.
+- **Stable exit codes** for CI/scripting:
+  - `0` OK
+  - `2` bad URL / bad input
+  - `3` API error (non-rate-limit)
+  - `4` rate limited after retries
 
-(If no requirements.txt, manually install requests and optionally pycryptodome.)
+---
 
-Usage
-Run the script with a public MEGA URL:
-python mega.py https://mega.nz/folder/ABC123#def456
+## Installation
 
-Example output for a folder:
+```bash
+# Python 3.8+ recommended
+pip install requests
+# Optional (enables decrypted names when a key is present)
+pip install pycryptodome
+```
 
-Total Folder Size: 1.23 GB (1324567890 bytes)
+## Usage
 
-Folder Structure:
+```bash
+python mega_size.py <MEGA_PUBLIC_URL> [options]
+```
 
-RootFolder (Folder)
-SubFolder (Folder)
-file1.txt (File - 500.00 MB [2023-01-01 12:00:00])
-file2.jpg (File - 1.00 KB [2023-02-02 13:00:00])
-Flags:
+### Common examples
 
---verbose: Enable INFO-level logging.
---summary: Print only the total size.
---export json: Export folder structure to mega_structure.json.
+Total size + tree:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB"
+```
 
-For files:
-python mega.py https://mega.nz/file/DEF456#ghi789
+Summary only (skip the tree):
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --summary
+```
 
-Output:
-File Name: example.file
-Total File Size: 1.00 MB (1048576 bytes)
+Only folders:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" -of
+```
 
-Testing:
-Run unit tests:
-pytest test_mega.py
+Filters (combine freely):
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" \
+  --ext .mp4,.mkv --min-size 500MB \
+  --since 2024-01-01 --until 2025-08-01
+```
 
-Tests cover formatting, decoding, and mocked API responses.
+Sort by size descending:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --sort size --desc
+```
 
-Contributing:
-Fork the repository, make changes, and submit a pull request. Ensure code follows PEP 8 (use black and flake8 for formatting/linting).
+Flat list for scripting:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --flat
+# prints: <size_bytes>\t<path> per file
+```
 
-License:
-MIT License. See LICENSE for details.
+Bytes only (for piping):
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --bytes-only
+```
+
+Export JSON and CSV:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --export json,csv
+# -> mega_structure.json, mega_structure.csv
+```
+
+Download-time estimate (overall + per top-level folder):
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --mbps 100
+```
+
+Verbose logging:
+```bash
+python mega_size.py "https://mega.nz/folder/AAAAA#BBBBB" --verbose
+```
+
+---
+
+## Options
+
+| Option | Description |
+|---|---|
+| `--summary` | Print only the total size (skip tree). |
+| `-of`, `-OF`, `--only-folders` | Show **only folders** in the printed tree (no files). |
+| `--ext` | Comma-separated extensions to include (e.g., `.mp4,.mkv`). |
+| `--min-size` | Minimum file size (e.g., `500MB`, `2GB`, `1500` for bytes). |
+| `--since`, `--until` | Date bounds (`YYYY-MM-DD`). Uses local time. |
+| `--sort` | `size`, `name`, or `date` (folders sort by rollup size / newest descendant time). |
+| `--desc` | Sort descending. |
+| `--flat` | Additionally print a flat list: `<size_bytes>\t<path>`. Suppressed when `-of` is used. |
+| `--bytes-only` | Print just the total number of bytes and exit. |
+| `--export` | `json`, `csv`, or `json,csv`. CSV lists files only with `path,type,size_bytes,size_human,ts_iso,handle`. |
+| `--mbps` | Estimate download time at the given Mbps (overall and per top-level folder). |
+| `--verbose` | INFO-level logs (helpful for troubleshooting). |
+
+> **Note:** Filters affect what is printed/exported and what the breakdown/ETA considers. The top “Total Folder Size” header always shows the *actual* total; the ETA notes whether it’s for the “filtered total” or full total.
+
+---
+
+## Decryption & names
+
+- If the public URL includes the decryption **key**, and `pycryptodome` is installed, the script will decrypt and display node names.
+- Without a key (or without `pycryptodome`), names appear as MEGA handles with “(encrypted)”. Size calculations still work.
+
+---
+
+## Output files
+
+- `mega_structure.json` — hierarchical tree of the printed view (filtered scope).
+- `mega_structure.csv` — flat file list with:  
+  `path, type, size_bytes, size_human, ts_iso, handle`
+
+Timestamps in the console are printed in **local time**; `ts_iso` in CSV is ISO-8601 (local).
+
+---
+
+## Exit codes
+
+- `0` — success  
+- `2` — invalid URL or argument error  
+- `3` — MEGA API error (non-rate-limit) or request failed after retries  
+- `4` — rate limited by API after retries (`-4`/`-6`)
+
+Your CI can key off these codes.
+
+---
+
+## Troubleshooting
+
+- **“Warning: No decryption key found in URL”** — expected for keyless links; names won’t decrypt.
+- **Rate limited** — the script retries with backoff; if still limited, it exits with code `4`.
+- **Windows console** — no special setup required.
+- **Large folders** — use `--summary`, `-of`, `--flat`, and/or filters to reduce output volume.
+
+---
+
+## License
+
+MIT LICENSE
+
+---
+
